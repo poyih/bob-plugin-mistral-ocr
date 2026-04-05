@@ -1,0 +1,45 @@
+{
+    "identifier": "com.poyih.bob-plugin-mistral-ocr",
+    "version": "0.2.0",
+    "category": "ocr",
+    "name": "Mistral OCR",
+    "summary": "使用 Mistral AI OCR 进行文本识别",
+    "icon": "",
+    "author": "poyih",
+    "homepage": "",
+    "appcast": "",
+    "minBobVersion": "0.5.0",
+    "options": [
+        {
+            "identifier": "apiKey",
+            "type": "text",
+            "title": "API Key",
+            "desc": "Mistral AI API Key（获取地址: console.mistral.ai）",
+            "textConfig": {
+                "type": "secure",
+                "placeholderText": "请输入 Mistral AI API Key"
+            }
+        },
+        {
+            "identifier": "apiUrl",
+            "type": "text",
+            "title": "自定义 API 地址",
+            "desc": "可留空，默认为 https://api.mistral.ai",
+            "textConfig": {
+                "type": "visible",
+                "placeholderText": "https://api.mistral.ai"
+            }
+        },
+        {
+            "identifier": "keepMarkdown",
+            "type": "menu",
+            "title": "保留 Markdown 格式",
+            "desc": "Mistral OCR 返回 Markdown 格式文本，可选择是否去除格式符号",
+            "defaultValue": "false",
+            "menuValues": [
+                { "title": "去除（纯文本）", "value": "false" },
+                { "title": "保留", "value": "true" }
+            ]
+        }
+    ]
+}
