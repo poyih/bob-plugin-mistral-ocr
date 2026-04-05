@@ -7,7 +7,7 @@
     "icon": "",
     "author": "poyih",
     "homepage": "",
-    "appcast": "",
+    "appcast": "https://raw.githubusercontent.com/poyih/bob-plugin-Mistral-ocr/main/appcast.json",
     "minBobVersion": "0.5.0",
     "options": [
         {
