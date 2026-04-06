@@ -26,9 +26,22 @@ function supportLanguages() {
     return items.map(([standardLang, lang]) => standardLang);
 }
 
+// 检测图片 MIME 类型
+function detectMimeType(base64) {
+    if (base64.indexOf('/9j/') === 0 || base64.indexOf('/9j/') <= 4) return 'image/jpeg';
+    if (base64.indexOf('iVBOR') === 0) return 'image/png';
+    if (base64.indexOf('R0lGOD') === 0) return 'image/gif';
+    if (base64.indexOf('UklGR') === 0) return 'image/webp';
+    return 'image/png';
+}
+
 // 去除 Markdown 格式，转为纯文本
 function stripMarkdown(text) {
     return text
+        // 移除围栏代码块 ```lang ... ```，保留内容
+        .replace(/```[\s\S]*?```/g, function (match) {
+            return match.replace(/```\w*\n?/g, '').replace(/```/g, '').trim();
+        })
         // 移除图片 ![alt](url)
         .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
         // 移除链接 [text](url) -> text
@@ -37,10 +50,14 @@ function stripMarkdown(text) {
         .replace(/^#{1,6}\s+/gm, '')
         // 移除粗体/斜体 ***text*** **text** *text*
         .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')
+        // 移除下划线风格粗体/斜体 ___text___ __text__ _text_
+        .replace(/_{1,3}([^_]+)_{1,3}/g, '$1')
         // 移除删除线 ~~text~~
         .replace(/~~([^~]+)~~/g, '$1')
         // 移除行内代码 `code`
         .replace(/`([^`]+)`/g, '$1')
+        // 移除 HTML 标签
+        .replace(/<[^>]+>/g, '')
         // 移除水平线 --- *** ___
         .replace(/^[\s]*([-*_]){3,}[\s]*$/gm, '')
         // 移除无序列表标记
@@ -73,6 +90,7 @@ function ocr(query, completion) {
     var apiUrl = ($option.apiUrl || "https://api.mistral.ai").replace(/\/+$/, '');
     var keepMarkdown = $option.keepMarkdown === "true";
     var base64Image = query.image.toBase64();
+    var mimeType = detectMimeType(base64Image);
 
     $http.request({
         method: "POST",
@@ -85,10 +103,10 @@ function ocr(query, completion) {
             model: "mistral-ocr-latest",
             document: {
                 type: "image_url",
-                image_url: "data:image/png;base64," + base64Image,
+                image_url: "data:" + mimeType + ";base64," + base64Image,
             },
         },
-        timeout: 30,
+        timeout: 60,
         handler: function (resp) {
             if (resp.error) {
                 completion({
