@@ -14,7 +14,7 @@
 
 ## 安装
 
-1. 前往 [Releases](https://github.com/poyih/bob-plugin-Mistral-ocr/releases) 下载最新的 `Mistral-OCR.bobplugin` 文件
+1. 前往 [Releases](https://github.com/poyih/bob-plugin-mistral-ocr/releases) 下载最新的 `Mistral-OCR.bobplugin` 文件
 2. 双击安装到 Bob
 
 ## 配置
