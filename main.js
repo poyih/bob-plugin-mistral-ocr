@@ -2,6 +2,8 @@ var items = [
     ['auto', 'auto'],
     ['zh-Hans', 'zh-Hans'],
     ['zh-Hant', 'zh-Hant'],
+    ['yue', 'yue'],
+    ['wyw', 'wyw'],
     ['en', 'en'],
     ['ja', 'ja'],
     ['ko', 'ko'],
@@ -10,6 +12,8 @@ var items = [
     ['es', 'es'],
     ['it', 'it'],
     ['pt', 'pt'],
+    ['pt-BR', 'pt-BR'],
+    ['pt-PT', 'pt-PT'],
     ['ru', 'ru'],
     ['ar', 'ar'],
     ['nl', 'nl'],
@@ -17,13 +21,33 @@ var items = [
     ['th', 'th'],
     ['vi', 'vi'],
     ['tr', 'tr'],
+    ['id', 'id'],
+    ['hi', 'hi'],
+    ['he', 'he'],
+    ['el', 'el'],
+    ['uk', 'uk'],
+    ['cs', 'cs'],
+    ['sv', 'sv'],
+    ['da', 'da'],
+    ['fi', 'fi'],
+    ['no', 'no'],
+    ['ro', 'ro'],
+    ['hu', 'hu'],
 ];
+
+// Mistral OCR 控制台（用于 API Key 排障链接）
+var MISTRAL_CONSOLE_URL = "https://console.mistral.ai/api-keys";
 
 var langMap = new Map(items);
 var langMapReverse = new Map(items.map(([standardLang, lang]) => [lang, standardLang]));
 
 function supportLanguages() {
     return items.map(([standardLang, lang]) => standardLang);
+}
+
+// 延长 Bob 调用插件的等待时间，避免大图 / 多页文档在默认 60s 内未返回被中断
+function pluginTimeoutInterval() {
+    return 90;
 }
 
 // 检测图片 MIME 类型
@@ -83,6 +107,7 @@ function pluginValidate(completion) {
             error: {
                 type: "secretKey",
                 message: "请先填写 Mistral AI API Key",
+                troubleshootingLink: MISTRAL_CONSOLE_URL,
             },
         });
         return;
@@ -116,6 +141,7 @@ function pluginValidate(completion) {
                     error: {
                         type: "secretKey",
                         message: "API Key 无效或已过期",
+                        troubleshootingLink: MISTRAL_CONSOLE_URL,
                     },
                 });
                 return;
@@ -144,6 +170,7 @@ function ocr(query, completion) {
             error: {
                 type: "secretKey",
                 message: "请先在插件设置中填写 Mistral AI API Key",
+                troubleshootingLink: MISTRAL_CONSOLE_URL,
             },
         });
         return;
@@ -151,6 +178,7 @@ function ocr(query, completion) {
 
     var apiUrl = ($option.apiUrl || "https://api.mistral.ai").replace(/\/+$/, '');
     var keepMarkdown = $option.keepMarkdown === "true";
+    var model = $option.model || "mistral-ocr-latest";
     var base64Image = query.image.toBase64();
     var mimeType = detectMimeType(base64Image);
 
@@ -162,13 +190,13 @@ function ocr(query, completion) {
             Authorization: "Bearer " + apiKey,
         },
         body: {
-            model: "mistral-ocr-latest",
+            model: model,
             document: {
                 type: "image_url",
                 image_url: "data:" + mimeType + ";base64," + base64Image,
             },
         },
-        timeout: 60,
+        timeout: 85,
         handler: function (resp) {
             if (resp.error) {
                 completion({
@@ -188,9 +216,11 @@ function ocr(query, completion) {
                 if (resp.data && resp.data.message) {
                     errMsg = resp.data.message;
                 }
+                var troubleshootingLink;
                 if (statusCode === 401 || statusCode === 403) {
                     errType = "secretKey";
                     errMsg = "API Key 无效或已过期，请检查设置";
+                    troubleshootingLink = MISTRAL_CONSOLE_URL;
                 } else if (statusCode === 429) {
                     errMsg = "请求过于频繁，请稍后再试";
                 } else if (statusCode >= 500) {
@@ -200,6 +230,7 @@ function ocr(query, completion) {
                     error: {
                         type: errType,
                         message: errMsg,
+                        troubleshootingLink: troubleshootingLink,
                         addition: JSON.stringify(resp.data),
                     },
                 });

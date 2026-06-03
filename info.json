@@ -1,6 +1,6 @@
 {
     "identifier": "bob-plugin-mistral-ocr",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "category": "ocr",
     "name": "Mistral OCR",
     "summary": "使用 Mistral AI OCR 进行文本识别",
@@ -29,6 +29,19 @@
                 "type": "visible",
                 "placeholderText": "https://api.mistral.ai"
             }
+        },
+        {
+            "identifier": "model",
+            "type": "menu",
+            "title": "OCR 模型",
+            "desc": "选择 Mistral OCR 模型版本，默认跟随官方最新版",
+            "defaultValue": "mistral-ocr-latest",
+            "menuValues": [
+                { "title": "最新版（推荐）", "value": "mistral-ocr-latest" },
+                { "title": "OCR 3（25.12）", "value": "mistral-ocr-2512" },
+                { "title": "OCR 2（25.05）", "value": "mistral-ocr-2505" },
+                { "title": "OCR（25.03）", "value": "mistral-ocr-2503" }
+            ]
         },
         {
             "identifier": "keepMarkdown",

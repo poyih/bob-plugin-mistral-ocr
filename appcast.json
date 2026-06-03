@@ -2,6 +2,14 @@
     "identifier": "bob-plugin-mistral-ocr",
     "versions": [
         {
+            "version": "1.2.0",
+            "desc": "新增 OCR 模型选择（OCR 3 / 2 / 初版，默认最新版）；扩充至 30+ 种识别语言（含粤语、文言文、葡语巴西/葡萄牙等）；延长插件超时时间避免大图被中断；验证/鉴权失败时提供控制台排障链接",
+            "sha256": "7000e0ae3c71c8110162f34dfa7925884d14d8382740659c026511ad632096cc",
+            "url": "https://github.com/poyih/bob-plugin-Mistral-ocr/releases/download/v1.2.0/Mistral-OCR.bobplugin",
+            "minBobVersion": "1.8.0",
+            "timestamp": 1780469702
+        },
+        {
             "version": "1.1.0",
             "desc": "新增验证按钮，支持在设置中验证 API Key 是否有效",
             "sha256": "1799d1e099794fefd518d3b936259d2c8e436a9de14673d72aa9cbff02c87d32",
