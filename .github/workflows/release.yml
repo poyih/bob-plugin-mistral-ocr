@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out tagged commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run repository checks
+        run: npm run check:syntax && npm run check:secrets && npm run check:metadata && npm test
+
+      - name: Build deterministic plugin archive
+        run: npm run build && npm run check:archive
+
+      - name: Verify the archive against appcast.json and write release notes
+        run: node scripts/prepare-release.mjs "$GITHUB_REF_NAME" "$RUNNER_TEMP/release-notes.md"
+
+      - name: Create the GitHub release with the plugin asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/Mistral-OCR.bobplugin \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Mistral OCR $GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --verify-tag
+
+      - name: Verify the published asset, archive scope, and tags
+        run: npm run check:metadata:deep

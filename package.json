@@ -7,7 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "check:syntax": "node --check main.js && node --check scripts/build-plugin.mjs && node --check scripts/check-secrets.mjs && node --check scripts/validate-release-metadata.mjs && node --check tests/integration.test.mjs",
+    "check:syntax": "node --check main.js && node --check scripts/build-plugin.mjs && node --check scripts/check-secrets.mjs && node --check scripts/validate-release-metadata.mjs && node --check scripts/prepare-release.mjs && node --check tests/integration.test.mjs",
     "check:secrets": "node scripts/check-secrets.mjs",
     "check:metadata": "node scripts/validate-release-metadata.mjs",
     "check:metadata:deep": "node scripts/validate-release-metadata.mjs --check-assets --check-tags",
