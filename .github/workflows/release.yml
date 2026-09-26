@@ -42,6 +42,19 @@ jobs:
       - name: Verify the archive against appcast.json and write release notes
         run: node scripts/prepare-release.mjs "$RELEASE_TAG" "$RUNNER_TEMP/release-notes.md"
 
+      - name: Ensure the tag is new or already at this commit, and the commit is on main
+        run: |
+          git fetch --force --tags origin
+          existing=$(git rev-parse --verify --quiet "refs/tags/$RELEASE_TAG^{commit}" || true)
+          if [ -n "$existing" ] && [ "$existing" != "$GITHUB_SHA" ]; then
+            echo "Tag $RELEASE_TAG already points at $existing, not at $GITHUB_SHA" >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Commit $GITHUB_SHA is not on main" >&2
+            exit 1
+          fi
+
       - name: Create the GitHub release with the plugin asset
         env:
           GH_TOKEN: ${{ github.token }}
