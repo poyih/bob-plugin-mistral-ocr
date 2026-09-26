@@ -91,6 +91,9 @@ test("offers OCR 4.1 and forwards latest or pinned model IDs unchanged", () => {
     modelOption.menuValues.map(({ value }) => value),
     ["mistral-ocr-latest", "mistral-ocr-4-1", "mistral-ocr-4-0", "mistral-ocr-2512"],
   );
+  for (const { title, value } of modelOption.menuValues) {
+    assert.ok(!title.includes("预览"), `${value} is generally available and must not be labelled as a preview`);
+  }
 
   for (const model of ["mistral-ocr-latest", "mistral-ocr-4-1"]) {
     const plugin = loadPlugin({ model });

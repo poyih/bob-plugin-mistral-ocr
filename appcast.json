@@ -2,6 +2,14 @@
     "identifier": "bob-plugin-mistral-ocr",
     "versions": [
         {
+            "version": "1.5.1",
+            "desc": "Mistral OCR 4.1（mistral-ocr-4-1）已于 2026.08 转为正式版：模型选项标签与说明不再标注公开预览，模型 ID、默认值与识别逻辑均不变；新增模型标签测试",
+            "sha256": "ca233d5096e8df66cf6d8b09e09451be4da04f465013373309febe2f48acd2c8",
+            "url": "https://github.com/poyih/bob-plugin-mistral-ocr/releases/download/v1.5.1/Mistral-OCR.bobplugin",
+            "minBobVersion": "1.8.0",
+            "timestamp": 1790387541000
+        },
+        {
             "version": "1.5.0",
             "desc": "新增 Mistral OCR 4.1（mistral-ocr-4-1，2026.07 发布，公开预览）模型选项；更新最新版说明与固定版本选择；新增模型配置及请求转发测试",
             "sha256": "9d2d0a040e57027f148e8db84181ce96b15ae87cd1e7b86ff84cbf253040f529",
