@@ -48,6 +48,25 @@ v0.5.0 将插件标识符从 `com.poyih.bob-plugin-mistral-ocr` 改为 `bob-plug
 
 如果你仍在使用 v0.4.0 或更早版本，请先确保自己仍可取得 API Key，再在 Bob 中卸载旧插件并从 [Releases](https://github.com/poyih/bob-plugin-mistral-ocr/releases) 手动安装最新版，最后重新填写设置。直接并行安装可能会留下两个独立插件。
 
+## 发布流程
+
+插件包由 [`scripts/build-plugin.mjs`](scripts/build-plugin.mjs) 确定性构建：同一份 `info.json` 和 `main.js` 在任何环境都会得到字节一致的 `Mistral-OCR.bobplugin`，因此 appcast 中的 SHA-256 可以在发布前就写入。
+
+1. **更新版本。** 修改 `info.json` 的 `version`，运行 `npm run build` 取得新插件包的 SHA-256，在 `appcast.json` 的 `versions` 顶部新增条目（`desc`、`sha256`、`url`、`minBobVersion` 与 13 位毫秒 `timestamp`），并同步 README 中的模型说明。
+2. **本地检查。** 运行 `npm run ci`。如需预览 Release 说明并确认产物与 appcast 条目一致，可运行 `node scripts/prepare-release.mjs vX.Y.Z release-notes.md`。
+3. **合并到 `main`。** 在 Release 发布之前，CI 的「Verify release assets, archive scope, and tags」步骤会因新版本资产尚不存在（HTTP 404）而失败，属预期；发布后重跑即可。
+4. **发布。** 推送标签 `vX.Y.Z`（`git tag vX.Y.Z && git push origin vX.Y.Z`），或在 GitHub Actions 页面手动运行 **Release** 工作流并填入标签名；标签不存在时会由 Release 在所选提交上创建。
+
+Release 工作流（[`.github/workflows/release.yml`](.github/workflows/release.yml)）会依次：
+
+- 运行全部仓库检查并确定性构建插件包；
+- 校验标签、`info.json`、appcast 顶部条目与产物的版本、下载地址和 SHA-256 一致；
+- 确认标签是新的或已指向当前提交，且该提交在 `main` 上；
+- 创建 Release 并上传 `Mistral-OCR.bobplugin`，说明文字由 appcast 条目的 `desc` 生成；
+- 对已发布的资产再做一次深度校验。
+
+创建 Release 之前的任何一步失败都会中止发布。若最后一步失败，说明已发布的资产与仓库记录不一致，需要人工核查，重跑无法修复。
+
 ## 发布完整性
 
 `appcast.json` 只记录当前标识符下确实存在且可下载的 Release 资产，版本号不连续是正常的。历史发布包以 appcast 中固定的 SHA-256 为准；已经发布的资产和 Git tag 不做追溯改写。已知的旧标识符版本、未实际发布的版本号以及历史 tag/发布包差异记录在 [`release-provenance.json`](release-provenance.json)。
