@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (vX.Y.Z); created on the selected ref if it does not exist yet"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -14,8 +20,10 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
-      - name: Check out tagged commit
+      - name: Check out the release commit
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -32,17 +40,17 @@ jobs:
         run: npm run build && npm run check:archive
 
       - name: Verify the archive against appcast.json and write release notes
-        run: node scripts/prepare-release.mjs "$GITHUB_REF_NAME" "$RUNNER_TEMP/release-notes.md"
+        run: node scripts/prepare-release.mjs "$RELEASE_TAG" "$RUNNER_TEMP/release-notes.md"
 
       - name: Create the GitHub release with the plugin asset
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/Mistral-OCR.bobplugin \
+          gh release create "$RELEASE_TAG" dist/Mistral-OCR.bobplugin \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Mistral OCR $GITHUB_REF_NAME" \
-            --notes-file "$RUNNER_TEMP/release-notes.md" \
-            --verify-tag
+            --target "$GITHUB_SHA" \
+            --title "Mistral OCR $RELEASE_TAG" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
 
       - name: Verify the published asset, archive scope, and tags
-        run: npm run check:metadata:deep
+        run: git fetch --tags origin && npm run check:metadata:deep
