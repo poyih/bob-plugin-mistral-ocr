@@ -1,6 +1,9 @@
 .DS_Store
 *.bobplugin
 
+# Build output from scripts/build-plugin.mjs.
+dist/
+
 # Local tool permissions may contain command history or credentials.
 .claude/settings.local.json
 
