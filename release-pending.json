@@ -1,0 +1,9 @@
+{
+    "identifier": "bob-plugin-mistral-ocr",
+    "version": "1.5.2",
+    "desc": "修复纯文本模式中的反斜杠和转义标签丢失；完善中文强调、HTML 实体与独立表格回填；优化宽表格性能；验证所选 OCR 模型并限制图片大小；拆分源码并增加真实图片回归；发布资产验证成功后再更新 appcast，支持安全重跑与完整下载超时",
+    "sha256": "b0c0bbce509418347789981e879238a68b77cddbdd894161fa323fa47bc9a525",
+    "url": "https://github.com/poyih/bob-plugin-mistral-ocr/releases/download/v1.5.2/Mistral-OCR.bobplugin",
+    "minBobVersion": "1.8.0",
+    "timestamp": 1790776800000
+}

@@ -11,6 +11,8 @@
 - 可选保留 Markdown 格式或输出纯文本
 - 支持安全的自定义 API 地址（远程代理必须使用 HTTPS，本机回环调试可使用 HTTP）
 - 内置 API Key 验证按钮，验证失败时直达控制台排障链接
+- 验证按钮同时检查所选 OCR 模型是否可用（支持模型别名和退役模型回退）
+- 图片原始数据上限为 20 MiB，超限图片会在上传前拒绝
 
 ## 安装
 
@@ -27,7 +29,7 @@
 | API Key | Mistral AI API Key（必填） |
 | 自定义 API 地址 | 可留空，默认为 `https://api.mistral.ai`；远程地址必须使用 HTTPS，仅 `localhost` / 回环地址可使用 HTTP |
 | OCR 模型 | 选择模型版本，默认跟随官方最新版 `mistral-ocr-latest` |
-| 保留 Markdown 格式 | 默认去除格式符号输出纯文本，可选保留原始 Markdown |
+| 保留 Markdown 格式 | 默认输出纯文本；开启后保留 Markdown，并将独立返回的表格回填到对应位置 |
 
 ## 模型版本
 
@@ -52,20 +54,51 @@ v0.5.0 将插件标识符从 `com.poyih.bob-plugin-mistral-ocr` 改为 `bob-plug
 
 插件包由 [`scripts/build-plugin.mjs`](scripts/build-plugin.mjs) 确定性构建：同一份 `info.json` 和 `main.js` 在任何环境都会得到字节一致的 `Mistral-OCR.bobplugin`，因此 appcast 中的 SHA-256 可以在发布前就写入。
 
-1. **更新版本。** 修改 `info.json` 的 `version`，运行 `npm run build` 取得新插件包的 SHA-256，在 `appcast.json` 的 `versions` 顶部新增条目（`desc`、`sha256`、`url`、`minBobVersion` 与 13 位毫秒 `timestamp`），并同步 README 中的模型说明。
-2. **本地检查。** 运行 `npm run ci`。如需预览 Release 说明并确认产物与 appcast 条目一致，可运行 `node scripts/prepare-release.mjs vX.Y.Z release-notes.md`。
-3. **合并到 `main`。** 在 Release 发布之前，CI 的「Verify release assets, archive scope, and tags」步骤会因新版本资产尚不存在（HTTP 404）而失败，属预期；发布后重跑即可。
-4. **发布。** 推送标签 `vX.Y.Z`（`git tag vX.Y.Z && git push origin vX.Y.Z`），或在 GitHub Actions 页面手动运行 **Release** 工作流并填入标签名；标签不存在时会由 Release 在所选提交上创建。
+`release-pending.json` 保存待发布版本；在线 `appcast.json` 仅列出已验证且公开可下载的版本。开发时不要提前向 appcast 加入新版本。
+
+1. **更新版本。** 修改 `info.json` 的 `version`，运行 `npm run stage:release -- "更新说明"`。这会生成源码、构建插件包，并将版本、下载地址、SHA-256、最低 Bob 版本和时间戳写入待发布文件。修改源码后再次运行 `npm run stage:release`，刷新校验值并保留已有说明和时间戳。
+2. **本地检查。** 运行 `npm run ci`，检查生成源码、JavaScript 语法、凭据、发布元数据、回归测试和确定性插件包，并验证待发布的 SHA-256。日常 CI 使用同样的离线检查，无需下载尚未发布的资产。
+3. **合并到 `main`。** 提交 `src/`、生成的 `main.js`、版本和待发布元数据；在线 appcast 保持现有已发布版本。
+4. **发布。** 推送标签 `vX.Y.Z`，或在 GitHub Actions 页面手动运行 **Release** 工作流并填入标签名。已有标签会被检出用于重试；新标签从所选的 `main` 提交创建。
 
 Release 工作流（[`.github/workflows/release.yml`](.github/workflows/release.yml)）会依次：
 
 - 运行全部仓库检查并确定性构建插件包；
-- 校验标签、`info.json`、appcast 顶部条目与产物的版本、下载地址和 SHA-256 一致；
+- 校验标签、`info.json`、待发布条目与产物的版本、下载地址和 SHA-256 一致；
 - 确认标签是新的或已指向当前提交，且该提交在 `main` 上；
-- 创建 Release 并上传 `Mistral-OCR.bobplugin`，说明文字由 appcast 条目的 `desc` 生成；
-- 对已发布的资产再做一次深度校验。
+- 创建或恢复草稿 Release，上传插件，并下载校验草稿资产；
+- 公开 Release 后校验公开下载地址；
+- 最后通过 GitHub Contents API 将该版本加入 `main/appcast.json`，保留其他已发布版本；
+- 对所有已发布资产和标签执行深度校验。
 
-创建 Release 之前的任何一步失败都会中止发布。若最后一步失败，说明已发布的资产与仓库记录不一致，需要人工核查，重跑无法修复。
+工作流串行处理发布。重跑会复用已存在的草稿或公开资产；校验值不一致时立即停止，绝不覆盖已发布包。上传、公开下载校验或 appcast 更新失败后，可重跑同一标签；若 appcast 已一致则不再提交。历史版本采用旧流程的标签不适用于此重试机制。
+
+Release 工作流需要 `contents: write` 权限以更新 appcast。若 `main` 的分支保护禁止工作流直接提交，需允许该发布流程的 appcast 更新，或将已验证的待发布条目通过 PR 合并；资产已经发布时，重跑不会重新上传或覆盖它。
+
+远端资产核验独立于日常 CI，可手动运行 **Release integrity audit** 工作流。下载超时覆盖完整响应体，并限制单个资产下载大小为 10 MiB。
+
+## 开发和测试
+
+开发源码位于 `src/config.js`、`src/image.js`、`src/markdown.js`、`src/api.js` 和 `src/ocr.js`；`src/html-entities.js` 提供 HTML 字符实体映射。`main.js` 由 `npm run build:source` 确定性生成，请在模块中修改代码后重新生成。插件包仍只含 `info.json` 和 `main.js`，无需 Node.js 依赖即可在 Bob 中运行。
+
+```bash
+npm run build:source
+npm test
+npm run stage:release
+npm run ci
+```
+
+macOS 上可额外运行 `npm run test:jsc`，通过系统 JavaScriptCore 加载完整插件并执行关键文本和图片回归；需要 Xcode Command Line Tools 中的 Swift。
+
+测试覆盖转义、代码、中文强调、实体、独立表格、宽表格性能、所选模型、上传限制、完整 PNG/JPEG 图片、下载超时和发布中断重试。`tests/fixtures/ocr-sample.png` 与 `.jpg` 是只含示例文字和表格的完整测试图，不含个人资料。
+
+真实 API 测试需自行提供环境变量，执行 `npm run test:live`；它只上传上述 PNG，一次运行发起一次 OCR 请求，可能产生费用。不要将真实 API Key 写入脚本、测试或仓库。该脚本不输出密钥、图片数据或原始响应。
+
+Bob 实机回归：安装 `dist/Mistral-OCR.bobplugin`，在服务中验证所选模型；将测试图拖入 OCR 窗口，检查中文、`ALICE 100`、`BOB 200`、路径与表格。以 Bob 实际表现为准，Node 模拟测试不能代替 JavaScriptCore 和界面验证。
+
+macOS 上也可通过 Bob 官方 AppleScript 接口运行 `npm run test:bob`。该命令提交公开测试图，不读取密钥；命令返回表示已提交，识别是否成功仍需在 Bob 的 OCR 窗口核对。系统首次请求自动化权限时由使用者确认。
+
+独立 OCR 窗口使用「偏好设置 → OCR → 服务」的设置；「翻译 → 服务 → 文本识别」是另一组配置。API Key、模型和验证结果应在实际使用的那一组服务中检查。
 
 ## 发布完整性
 

@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { downloadBuffer } from "./lib/http.mjs";
+import { validatePendingRelease, RELEASE_FIELDS } from "./lib/release.mjs";
 
 const PACKAGE_FILES = ["info.json", "main.js"];
 const VALID_OPTIONS = new Set(["--check-assets", "--check-tags", "--help"]);
@@ -243,6 +245,17 @@ if (isObject(newestRelease)) {
     }
 }
 
+const pending = await loadJson("release-pending.json");
+try {
+    validatePendingRelease(info, pending);
+    const publishedPending = appcastByVersion.get(pending.version);
+    if (publishedPending && !RELEASE_FIELDS.every((field) => publishedPending[field] === pending[field])) {
+        fail("release-pending.json", "must match immutable metadata when this version is already published");
+    }
+} catch (error) {
+    fail("release-pending.json", error.message);
+}
+
 if (!isObject(provenance) || provenance.schemaVersion !== 1) {
     fail("release-provenance.json.schemaVersion", "must equal 1");
 }
@@ -368,21 +381,6 @@ const allReleases = [
 ];
 const artifactByVersion = new Map();
 
-async function fetchWithTimeout(url, timeoutMs = 30_000) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-    try {
-        return await fetch(url, {
-            headers: { "User-Agent": "bob-plugin-mistral-ocr-metadata-validator" },
-            redirect: "follow",
-            signal: controller.signal
-        });
-    } finally {
-        clearTimeout(timer);
-    }
-}
-
 if (checkAssets && errors.length === 0) {
     const unzipProbe = run("unzip", ["-v"]);
     if (unzipProbe.status !== 0) {
@@ -396,12 +394,9 @@ if (checkAssets && errors.length === 0) {
                 process.stdout.write(`Checking ${location} asset... `);
 
                 try {
-                    const response = await fetchWithTimeout(release.url);
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status} ${response.statusText}`);
-                    }
-
-                    const archive = Buffer.from(await response.arrayBuffer());
+                    const archive = await downloadBuffer(release.url, {
+                        headers: { "User-Agent": "bob-plugin-mistral-ocr-metadata-validator" },
+                    });
                     const digest = createHash("sha256").update(archive).digest("hex");
                     if (digest !== release.sha256) {
                         fail(location, `SHA-256 mismatch: expected ${release.sha256}, got ${digest}`);

@@ -23,23 +23,5 @@ jobs:
           node-version: 20
           package-manager-cache: false
 
-      - name: Check JavaScript syntax
-        run: npm run check:syntax
-
-      - name: Scan repository files for credentials
-        run: npm run check:secrets
-
-      - name: Validate release metadata
-        run: npm run check:metadata
-
-      - name: Verify release assets, archive scope, and tags
-        run: npm run check:metadata:deep
-
-      - name: Run plugin integration tests
-        run: npm test
-
-      - name: Build deterministic plugin archive
-        run: npm run build
-
-      - name: Verify archive scope and reproducibility
-        run: npm run check:archive
+      - name: Run offline source, metadata, regression, and deterministic archive checks
+        run: npm run ci

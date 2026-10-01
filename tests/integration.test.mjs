@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
+import { inflateSync } from "node:zlib";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PLUGIN_SOURCE = await readFile(resolve(ROOT, "main.js"), "utf8");
@@ -208,7 +209,7 @@ test("rejects unknown and empty image formats without making a request", async (
   const cases = [
     ["unknown bytes", Buffer.from([0x00, 0x01, 0x02, 0x03]).toString("base64"), /不支持.*HEIC.*HEIF/],
     ["empty data", "", /图片数据为空/],
-    ["invalid base64", "not base64!", /不支持.*HEIC.*HEIF/],
+    ["invalid base64", "not base64!", /Base64.*无效/],
   ];
 
   for (const [name, base64, expectedMessage] of cases) {
@@ -623,4 +624,127 @@ test("Markdown OCR preserves the service response exactly", () => {
   assert.equal(completions[0]?.result?.from, "en");
   assert.equal(completions[0]?.result?.texts?.[0]?.text, markdown);
   assert.equal(completions[0]?.result?.raw?.pages?.[0]?.markdown, markdown);
+});
+
+test("plain text preserves backslashes in code and escaped HTML literals", () => {
+  const plugin = loadPlugin();
+  assert.equal(plugin.context.stripMarkdown('`C:\\`'), 'C:\\');
+  assert.equal(plugin.context.stripMarkdown('`foo\\`bar`'), 'foo\\bar`');
+  assert.equal(plugin.context.stripMarkdown('\\<br/> and \\<code>x\\</code>'), '<br/> and <code>x</code>');
+  assert.equal(plugin.context.stripMarkdown('\\`literal`'), '`literal`');
+});
+
+test("plain text handles Chinese and nested emphasis while preserving multiplication", () => {
+  const plugin = loadPlugin();
+  for (const [input, expected] of [
+    ['这是**重点**，请注意。', '这是重点，请注意。'],
+    ['**中文**。', '中文。'],
+    ['**a *b* c**', 'a b c'],
+    ['这是*重点*。', '这是重点。'],
+    ['***重要***', '重要'],
+    ['2*3*4 and a*b*c', '2*3*4 and a*b*c'],
+    ['\\*literal\\*', '*literal*'],
+    ['* unmatched', 'unmatched'],
+  ]) assert.equal(plugin.context.stripMarkdown(input), expected);
+});
+
+test("HTML entities decode after markup removal without changing code, math, or escaped entities", () => {
+  const plugin = loadPlugin();
+  assert.equal(plugin.context.stripMarkdown('<td>A &amp; B</td><td>x &lt; 5</td>'), 'A & B x < 5');
+  assert.equal(plugin.context.stripMarkdown('&lt;br/&gt; &#20013;&#x6587; &eacute; &#x1f600; &unknown;'), '<br/> 中文 é 😀 &unknown;');
+  assert.equal(plugin.context.stripMarkdown('`&amp;` $x &lt; y$ \\&amp;'), '&amp; $x &lt; y$ &amp;');
+});
+
+test("short table separator cells are recognized and wide tables stay linear", () => {
+  const plugin = loadPlugin();
+  assert.equal(plugin.context.stripMarkdown('| A | B |\n| :--: | :-: |\n| 1 | 2 |'), 'A B\n1 2');
+  assert.equal(plugin.context.stripMarkdown('| A | B |\n| - |\n| 1 |'), '| A | B |\n| - |\n| 1 |');
+  const row = '| ' + 'cell | '.repeat(16_000);
+  const input = row + '\n| ' + '- | '.repeat(16_000) + '\n' + row;
+  const start = Date.now();
+  assert.equal(plugin.context.stripMarkdown(input), [Array(16_000).fill('cell').join(' '), Array(16_000).fill('cell').join(' ')].join('\n'));
+  assert.ok(Date.now() - start < 1_000, 'wide tables must not repeatedly rescan the accumulated output');
+});
+
+test("OCR resolves independent tables in reading order and preserves the raw response", async (t) => {
+  for (const keepMarkdown of ['false', 'true']) await t.test(keepMarkdown, () => {
+    const plugin = loadPlugin({ keepMarkdown });
+    const completions = invokeOcr(plugin);
+    const markdown = 'Before\n\n[tbl-0.html](tbl-0.html)\n\nAfter';
+    const table = '<table><tr><td>Alice</td><td>100</td></tr></table>';
+    const data = { pages: [{ markdown, tables: [{ id: 'tbl-0.html', format: 'html', content: table }] }] };
+    plugin.requests[0].handler({ response: { statusCode: 200 }, data });
+    const result = completions[0].result;
+    assert.match(result.texts[0].text, /Before[\s\S]*Alice[\s\S]*100[\s\S]*After/);
+    assert.doesNotMatch(result.texts[0].text, /tbl-0/);
+    assert.equal(result.raw.pages[0].markdown, markdown);
+    if (keepMarkdown === 'true') assert.ok(result.texts[0].text.includes(table));
+  });
+});
+
+test("table-only pages, Markdown tables, and literal placeholder references keep their content", () => {
+  const plugin = loadPlugin();
+  const completions = invokeOcr(plugin);
+  plugin.requests[0].handler({ response: { statusCode: 200 }, data: { pages: [
+    { markdown: '', tables: [{ id: 'tbl-0.md', content: '| Name |\n| - |\n| Alice |' }] },
+    { markdown: '`[tbl-1.html](tbl-1.html)`\n\n[tbl-1.html](tbl-1.html)', tables: [{ id: 'tbl-1.html', content: '<td>Bob</td>' }] },
+  ] } });
+  assert.equal(completions[0].result.texts[0].text, 'Name\n\nAlice');
+  assert.match(completions[0].result.texts[1].text, /\[tbl-1\.html\]\(tbl-1\.html\)[\s\S]*Bob/);
+});
+
+test("model validation checks exact IDs, aliases, and retired-model fallback", () => {
+  for (const [model, models, expected] of [
+    ['mistral-ocr-4-1', [{ id: 'mistral-ocr-4-1' }], true],
+    ['mistral-ocr-latest', [{ id: 'ocr-backend', aliases: ['mistral-ocr-latest'] }], true],
+    ['mistral-ocr-2503', [{ id: 'mistral-ocr-latest' }], true],
+    ['mistral-ocr-4-1', [{ id: 'mistral-ocr-2512' }], false],
+    ['mistral-ocr-latest', [], false],
+  ]) {
+    const plugin = loadPlugin({ model });
+    const completions = [];
+    plugin.context.pluginValidate(value => completions.push(value));
+    plugin.requests[0].handler({ response: { statusCode: 200 }, data: { data: models } });
+    assert.equal(completions.length, 1);
+    assert.equal(completions[0].result, expected);
+    if (!expected) assert.match(completions[0].error.message, /未提供所选 OCR 模型/);
+  }
+});
+
+test("oversized images are rejected before encoding or making an HTTP request", () => {
+  const plugin = loadPlugin();
+  const completions = invokeOcr(plugin, { image: { length: 20 * 1024 * 1024 + 1, toBase64() { throw new Error('must not encode'); } } });
+  assertTypedError(completions, 'param', /20 MiB/);
+  assert.equal(plugin.requests.length, 0);
+  assert.equal(plugin.context.base64ByteLength('iVBORw0KGgo='), 8);
+  assert.equal(plugin.context.base64ByteLength('iVBORw0KGgo'), 8);
+  assert.equal(plugin.context.base64ByteLength('iVBORw0KGgo=!'), null);
+});
+
+test("complete PNG and JPEG fixtures are submitted byte-for-byte with correct MIME types", async (t) => {
+  for (const [name, mime] of [['ocr-sample.png', 'image/png'], ['ocr-sample.jpg', 'image/jpeg']]) await t.test(name, async () => {
+    const bytes = await readFile(resolve(ROOT, 'tests/fixtures', name));
+    assert.ok(bytes.length > 1000, 'fixture must be a complete image, not just magic bytes');
+    if (name.endsWith('.png')) {
+      assert.equal(bytes.readUInt32BE(16), 1000);
+      assert.equal(bytes.readUInt32BE(20), 520);
+      const chunks = [];
+      let cursor = 8;
+      while (cursor < bytes.length) {
+        const length = bytes.readUInt32BE(cursor);
+        const type = bytes.subarray(cursor + 4, cursor + 8).toString('ascii');
+        if (type === 'IDAT') chunks.push(bytes.subarray(cursor + 8, cursor + 8 + length));
+        cursor += 12 + length;
+      }
+      assert.equal(inflateSync(Buffer.concat(chunks)).length, 520 * (1000 * 3 + 1));
+      assert.equal(bytes.subarray(bytes.length - 8, bytes.length - 4).toString('ascii'), 'IEND');
+    } else assert.equal(bytes.subarray(bytes.length - 2).toString('hex'), 'ffd9');
+    const plugin = loadPlugin();
+    const completions = invokeOcr(plugin, queryWithImage(bytes.toString('base64')));
+    const prefix = `data:${mime};base64,`;
+    assert.ok(plugin.requests[0].body.document.image_url.startsWith(prefix));
+    assert.ok(Buffer.from(plugin.requests[0].body.document.image_url.slice(prefix.length), 'base64').equals(bytes));
+    plugin.requests[0].handler(successResponse('**中文识别测试**。\n\nALICE 100\nBOB 200\n\n`C:\\`'));
+    assert.equal(completions[0].result.texts[0].text, '中文识别测试。\n\nALICE 100\n\nBOB 200\n\nC:\\');
+  });
 });

@@ -1,0 +1,23 @@
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
+import { createGitHubApi, ensurePublishedRelease, publishAppcast, validatePendingRelease } from "./lib/release.mjs";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const [tag, notesPath] = process.argv.slice(2);
+if (!/^v\d+\.\d+\.\d+$/.test(tag ?? "") || !notesPath) throw new Error("Usage: node scripts/publish-release.mjs vX.Y.Z <notes-path>");
+const info = JSON.parse(await readFile(new URL("../info.json", import.meta.url), "utf8"));
+const pending = JSON.parse(await readFile(new URL("../release-pending.json", import.meta.url), "utf8"));
+const archive = await readFile(new URL("../dist/Mistral-OCR.bobplugin", import.meta.url));
+const notes = await readFile(notesPath, "utf8");
+validatePendingRelease(info, pending, archive);
+const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+const commit = git("rev-parse", "HEAD");
+const existingTag = (() => { try { return git("rev-parse", "--verify", `${tag}^{commit}`); } catch { return null; } })();
+if (existingTag && existingTag !== commit) throw new Error("Tag points at a different commit");
+git("merge-base", "--is-ancestor", commit, "origin/main");
+const api = createGitHubApi(process.env.GITHUB_REPOSITORY, process.env.GH_TOKEN);
+await ensurePublishedRelease(api, { tag, commit, pending, archive, notes });
+console.log(`Verified and published ${tag}; updating appcast.json.`);
+const changed = await publishAppcast(api, pending);
+console.log(changed ? "Published appcast update on main." : "Appcast already matches; no update needed.");
