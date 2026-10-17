@@ -905,6 +905,7 @@ function decodeHtmlEntities(text) {
 // 先还原独立表格；代码片段和转义链接中的占位文本仍按原文保留。
 function resolvePageTables(page) {
     if (!Array.isArray(page.tables) || page.tables.length === 0) return page.markdown;
+    var sourceMarkdown = page.markdown.replace(/\r\n?/g, "\n");
     var tables = Object.create(null);
     var orderedTables = [];
     for (var index = 0; index < page.tables.length; index++) {
@@ -914,11 +915,11 @@ function resolvePageTables(page) {
         }
         var id = getAssetBasename(table.id);
         if (tables[id]) throw new Error("表格响应包含重复 id");
-        tables[id] = { content: table.content, used: false };
+        tables[id] = { content: table.content.replace(/\r\n?/g, "\n"), used: false };
         orderedTables.push(tables[id]);
     }
-    var protector = createTextProtector(page.markdown);
-    var markdown = protectFencedCode(page.markdown, protector.protect, true);
+    var protector = createTextProtector(sourceMarkdown);
+    var markdown = protectFencedCode(sourceMarkdown, protector.protect, true);
     markdown = protectHtmlVerbatim(markdown, protector.protect, true);
     markdown = protectInlineCode(markdown, protector.protect, true);
     markdown = protectMath(markdown, protector.protect);

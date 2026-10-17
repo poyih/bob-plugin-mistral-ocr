@@ -1,11 +1,11 @@
 # Mistral OCR - Bob 文本识别插件
 
-基于 [Mistral AI OCR](https://docs.mistral.ai/studio-api/document-processing/basic_ocr) 的 [Bob](https://bobtranslate.com/) 文本识别（OCR）插件。
+基于 [Mistral AI OCR](https://docs.mistral.ai/studio/document-processing/basic_ocr) 的 [Bob](https://bobtranslate.com/) 文本识别（OCR）插件。
 
 ## 功能
 
 - 调用 Mistral OCR API 识别图片中的文字
-- 可选择 OCR 模型版本：最新版、OCR 4.1（26.07）、OCR 4（26.06）、OCR 3（25.12）
+- 可选择 OCR 模型版本：最新版、OCR 4.1（26.07）、OCR 3（25.12）
 - 支持多语言识别（中文简繁、粤语、文言文、英、日、韩、葡（葡/巴）等 30+ 种语言）
 - 支持表格、公式等复杂排版识别
 - 可选保留 Markdown 格式或输出纯文本
@@ -36,13 +36,12 @@
 | 名称 | 模型 ID | 说明 |
 |------|---------|------|
 | 最新版（推荐） | `mistral-ocr-latest` | 始终指向 Mistral 官方最新 OCR 模型（当前为 OCR 4.1） |
-| [OCR 4.1](https://docs.mistral.ai/models/ocr-4-1) | `mistral-ocr-4-1` | 2026.07 发布，2026.08 转为正式版，新增区块级置信度评分 |
-| OCR 4 | `mistral-ocr-4-0` | 2026.06 发布，支持 170 种语言、边界框、块分类与置信度评分 |
-| OCR 3 | `mistral-ocr-2512` | 2025.12 发布，复杂表格 / 手写 / 扫描件识别显著提升 |
+| [OCR 4.1](https://docs.mistral.ai/models/ocr-4-1) | `mistral-ocr-4-1` | 2026.07 发布，2026.08 转为正式版，支持 170 种语言、边界框、块分类与区块级置信度评分 |
+| [OCR 3](https://docs.mistral.ai/models/ocr-3-25-12) | `mistral-ocr-2512` | 2025.12 发布，复杂表格 / 手写 / 扫描件识别显著提升 |
 
-> 已退役模型（`mistral-ocr-2505`、`mistral-ocr-2503`）已从选项中移除；若你之前选过旧版，插件会自动回退到最新版。
+> 已退役模型（`mistral-ocr-4-0`、`mistral-ocr-2505`、`mistral-ocr-2503`）已从选项中移除；若你之前选过旧版，插件会自动回退到最新版。
 
-> OCR 4.1 已于 2026.08 结束公开预览并转为正式版；如需固定使用此前版本，可在设置中选择 OCR 4（`mistral-ocr-4-0`）或 OCR 3（`mistral-ocr-2512`）。
+> OCR 4.1 已于 2026.08 结束公开预览并转为正式版，OCR 4.0（`mistral-ocr-4-0`）已于 2026.09 退役；如需固定使用旧版，可在设置中选择 OCR 3（`mistral-ocr-2512`）。
 
 ## 从 0.4.0 或更早版本迁移
 

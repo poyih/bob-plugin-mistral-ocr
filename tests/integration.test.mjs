@@ -84,23 +84,30 @@ test("declares Bob-compatible language codes and avoids RegExp lookbehind", () =
   assert.equal(PLUGIN_SOURCE.includes("(?<!"), false);
 });
 
-test("offers OCR 4.1 and forwards latest or pinned model IDs unchanged", () => {
+test("offers active OCR models, forwards pinned IDs, and falls back retired models", () => {
   const modelOption = PLUGIN_INFO.options.find((option) => option.identifier === "model");
   assert.ok(modelOption, "info.json must declare the model option");
   assert.equal(modelOption.defaultValue, "mistral-ocr-latest");
   assert.deepEqual(
     modelOption.menuValues.map(({ value }) => value),
-    ["mistral-ocr-latest", "mistral-ocr-4-1", "mistral-ocr-4-0", "mistral-ocr-2512"],
+    ["mistral-ocr-latest", "mistral-ocr-4-1", "mistral-ocr-2512"],
   );
   for (const { title, value } of modelOption.menuValues) {
     assert.ok(!title.includes("预览"), `${value} is generally available and must not be labelled as a preview`);
   }
 
-  for (const model of ["mistral-ocr-latest", "mistral-ocr-4-1"]) {
+  for (const model of ["mistral-ocr-latest", "mistral-ocr-4-1", "mistral-ocr-2512"]) {
     const plugin = loadPlugin({ model });
     invokeOcr(plugin);
     assert.equal(plugin.requests.length, 1);
     assert.equal(plugin.requests[0].body.model, model);
+  }
+
+  for (const retiredModel of ["mistral-ocr-4-0", "mistral-ocr-2505", "mistral-ocr-2503"]) {
+    const plugin = loadPlugin({ model: retiredModel });
+    invokeOcr(plugin);
+    assert.equal(plugin.requests.length, 1);
+    assert.equal(plugin.requests[0].body.model, "mistral-ocr-latest");
   }
 });
 
@@ -683,20 +690,30 @@ test("OCR resolves independent tables in reading order and preserves the raw res
 });
 
 test("table-only pages, Markdown tables, and literal placeholder references keep their content", () => {
-  const plugin = loadPlugin();
+  const plugin = loadPlugin({ keepMarkdown: "true" });
   const completions = invokeOcr(plugin);
   plugin.requests[0].handler({ response: { statusCode: 200 }, data: { pages: [
+    { markdown: '', tables: [{ id: 'tbl-0.md', content: '| Name |\r\n| - |\r\n| Alice |' }] },
+    { markdown: '```\r\n[tbl-1.html](tbl-1.html)\r\n```\r\n\r\n[tbl-1.html](tbl-1.html)', tables: [{ id: 'tbl-1.html', content: '<td>Bob</td>' }] },
+  ] } });
+  assert.equal(completions[0].result.texts[0].text, '| Name |\n| - |\n| Alice |');
+  assert.equal(completions[0].result.texts[1].text, '```\n[tbl-1.html](tbl-1.html)\n```\n\n<td>Bob</td>');
+
+  const plainPlugin = loadPlugin();
+  const plainCompletions = invokeOcr(plainPlugin);
+  plainPlugin.requests[0].handler({ response: { statusCode: 200 }, data: { pages: [
     { markdown: '', tables: [{ id: 'tbl-0.md', content: '| Name |\n| - |\n| Alice |' }] },
     { markdown: '`[tbl-1.html](tbl-1.html)`\n\n[tbl-1.html](tbl-1.html)', tables: [{ id: 'tbl-1.html', content: '<td>Bob</td>' }] },
   ] } });
-  assert.equal(completions[0].result.texts[0].text, 'Name\n\nAlice');
-  assert.match(completions[0].result.texts[1].text, /\[tbl-1\.html\]\(tbl-1\.html\)[\s\S]*Bob/);
+  assert.equal(plainCompletions[0].result.texts[0].text, 'Name\n\nAlice');
+  assert.match(plainCompletions[0].result.texts[1].text, /\[tbl-1\.html\]\(tbl-1\.html\)[\s\S]*Bob/);
 });
 
 test("model validation checks exact IDs, aliases, and retired-model fallback", () => {
   for (const [model, models, expected] of [
     ['mistral-ocr-4-1', [{ id: 'mistral-ocr-4-1' }], true],
     ['mistral-ocr-latest', [{ id: 'ocr-backend', aliases: ['mistral-ocr-latest'] }], true],
+    ['mistral-ocr-4-0', [{ id: 'mistral-ocr-latest' }], true],
     ['mistral-ocr-2503', [{ id: 'mistral-ocr-latest' }], true],
     ['mistral-ocr-4-1', [{ id: 'mistral-ocr-2512' }], false],
     ['mistral-ocr-latest', [], false],

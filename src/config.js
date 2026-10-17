@@ -40,7 +40,7 @@ var MISTRAL_CONSOLE_URL = "https://console.mistral.ai/api-keys";
 
 // 插件的上传上限；Base64 的额外体积不计入原始图片大小。
 var MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-var RETIRED_MODELS = ["mistral-ocr-2503", "mistral-ocr-2505"];
+var RETIRED_MODELS = ["mistral-ocr-2503", "mistral-ocr-2505", "mistral-ocr-4-0"];
 
 function resolveOcrModel(value) {
     var model = value || "mistral-ocr-latest";
