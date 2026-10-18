@@ -80,6 +80,8 @@ Release 工作流需要 `contents: write` 权限以更新 appcast。若 `main` �
 
 开发源码位于 `src/config.js`、`src/image.js`、`src/markdown.js`、`src/api.js` 和 `src/ocr.js`；`src/html-entities.js` 提供 HTML 字符实体映射。`main.js` 由 `npm run build:source` 确定性生成，请在模块中修改代码后重新生成。插件包仍只含 `info.json` 和 `main.js`，无需 Node.js 依赖即可在 Bob 中运行。
 
+开发和 CI 使用 Node.js 24 或更新版本，无需安装第三方 npm 依赖。
+
 ```bash
 npm run build:source
 npm test
@@ -87,9 +89,9 @@ npm run stage:release
 npm run ci
 ```
 
-macOS 上可额外运行 `npm run test:jsc`，通过系统 JavaScriptCore 加载完整插件并执行关键文本和图片回归；需要 Xcode Command Line Tools 中的 Swift。
+CI 在 Ubuntu 上执行完整检查，并在 macOS 上通过 `npm run test:jsc` 加载完整插件，验证系统 JavaScriptCore 中的文本转换、长空白表格性能和图片格式检测。macOS 本地也可运行该命令；需要 Xcode Command Line Tools 中的 Swift。
 
-测试覆盖转义、代码、中文强调、实体、独立表格、宽表格性能、所选模型、上传限制、完整 PNG/JPEG 图片、下载超时和发布中断重试。`tests/fixtures/ocr-sample.png` 与 `.jpg` 是只含示例文字和表格的完整测试图，不含个人资料。
+测试覆盖转义（包括删除线定界符）、代码、中文强调、实体、独立表格、宽表格和长空白性能、长 AVIF/HEIF 文件头、所选模型、上传限制、完整 PNG/JPEG 图片、下载超时和发布中断重试。`tests/fixtures/ocr-sample.png` 与 `.jpg` 是只含示例文字和表格的完整测试图，不含个人资料。
 
 真实 API 测试需自行提供环境变量，执行 `npm run test:live`；它只上传上述 PNG，一次运行发起一次 OCR 请求，可能产生费用。不要将真实 API Key 写入脚本、测试或仓库。该脚本不输出密钥、图片数据或原始响应。
 

@@ -48,6 +48,84 @@ function readUint32BigEndian(bytes, offset) {
     return bytes[offset] * 0x1000000 + bytes[offset + 1] * 0x10000 + bytes[offset + 2] * 0x100 + bytes[offset + 3];
 }
 
+function detectIsoBmffMimeType(base64, prefix) {
+    var boxSize = readUint32BigEndian(prefix, 0);
+    var majorBrandOffset = 8;
+    // 含空白 / padding 时只是上界，截断仍由下面的流式扫描检查。
+    var maxDecodedBytes = Math.floor(base64.length * 3 / 4);
+
+    if (boxSize === 1) {
+        var largeSizeHigh = readUint32BigEndian(prefix, 8);
+        var largeSizeLow = readUint32BigEndian(prefix, 12);
+        if (largeSizeHigh === null || largeSizeLow === null ||
+            largeSizeHigh > Math.floor(maxDecodedBytes / 0x100000000)) return null;
+        boxSize = largeSizeHigh * 0x100000000 + largeSizeLow;
+        majorBrandOffset = 16;
+    } else if (boxSize === 0) {
+        // size=0 表示直到文件结尾；只计数，不将完整图片解码到数组。
+        boxSize = base64ByteLength(base64);
+    }
+
+    // ftyp 必须包含 major_brand、minor_version 和完整的 4 字节兼容品牌。
+    if (boxSize === null || boxSize < majorBrandOffset + 8 || boxSize % 4 !== 0 || boxSize > maxDecodedBytes) return null;
+
+    var hasAvifBrand = false;
+    var hasHeicBrand = false;
+    var hasHeifBrand = false;
+    var hasSequenceBrand = false;
+    var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    var buffer = 0;
+    var bits = 0;
+    var byteOffset = 0;
+    var brand = 0;
+
+    // 逐字节读取整个 ftyp，内存始终只保留一个品牌；到盒边界立即停止，
+    // 不解码后续图片内容，也不会把后续盒中的品牌字样当成兼容品牌。
+    for (var index = 0; index < base64.length && byteOffset < boxSize; index++) {
+        var code = base64.charCodeAt(index);
+        if (code === 9 || code === 10 || code === 13 || code === 32) continue;
+        if (code === 61) break;
+        var value = alphabet.indexOf(base64.charAt(index));
+        if (value < 0) return null;
+        buffer = (buffer << 6) | value;
+        bits += 6;
+        if (bits < 8) continue;
+        bits -= 8;
+        var byte = (buffer >> bits) & 0xff;
+        buffer = buffer & ((1 << bits) - 1);
+        byteOffset++;
+        if (byteOffset <= majorBrandOffset) continue;
+
+        brand = brand * 0x100 + byte;
+        if ((byteOffset - majorBrandOffset) % 4 !== 0) continue;
+        if (byteOffset !== majorBrandOffset + 8) { // minor_version 不是品牌字段
+            switch (brand) {
+                case 0x61766966: hasAvifBrand = true; break; // avif
+                case 0x68656963: // heic
+                case 0x68656978: // heix
+                case 0x6865696d: // heim
+                case 0x68656973: hasHeicBrand = true; break; // heis
+                case 0x6d696631: hasHeifBrand = true; break; // mif1
+                case 0x61766973: // avis
+                case 0x6176696f: // avio
+                case 0x68657663: // hevc
+                case 0x68657678: // hevx
+                case 0x6865766d: // hevm
+                case 0x68657673: // hevs
+                case 0x6d736631: hasSequenceBrand = true; break; // msf1
+            }
+        }
+        brand = 0;
+    }
+
+    // 序列文件可能同时声明 still-image 品牌；维持单图 OCR 对序列的拒绝策略。
+    if (byteOffset !== boxSize || hasSequenceBrand) return null;
+    if (hasAvifBrand) return "image/avif";
+    if (hasHeicBrand) return "image/heic";
+    if (hasHeifBrand) return "image/heif";
+    return null;
+}
+
 // 检测 Mistral OCR 支持的常见图片格式。未知格式返回 null，禁止伪装成 PNG 上传。
 function detectMimeType(base64) {
     var bytes = decodeBase64Prefix(base64, 64);
@@ -69,47 +147,7 @@ function detectMimeType(base64) {
 
     // AVIF / HEIC / HEIF 使用 ISO BMFF 容器。扫描全部品牌后按更具体的格式优先返回。
     if (bytesToAscii(bytes, 4, 4) === "ftyp") {
-        var boxSize = readUint32BigEndian(bytes, 0);
-        var majorBrandOffset = 8;
-        var minorVersionOffset = 12;
-        var brandScanEnd;
-
-        if (boxSize === 1) {
-            // large-size ftyp：8 字节扩展长度位于 box type 后，品牌字段整体后移。
-            var largeSizeHigh = readUint32BigEndian(bytes, 8);
-            var largeSizeLow = readUint32BigEndian(bytes, 12);
-            if (largeSizeHigh === null || largeSizeLow === null || (largeSizeHigh === 0 && largeSizeLow < 24)) return null;
-            majorBrandOffset = 16;
-            minorVersionOffset = 20;
-            brandScanEnd = largeSizeHigh === 0 ? Math.min(largeSizeLow, bytes.length) : bytes.length;
-        } else {
-            if (boxSize === null || (boxSize !== 0 && boxSize < 16)) return null;
-            brandScanEnd = boxSize === 0 ? bytes.length : Math.min(boxSize, bytes.length);
-        }
-
-        var hasAvifBrand = false;
-        var hasAvifSequenceBrand = false;
-        var hasHeicBrand = false;
-        var hasHeifBrand = false;
-        var hasHeicSequenceBrand = false;
-        var hasHeifSequenceBrand = false;
-        for (var brandOffset = majorBrandOffset; brandOffset + 4 <= brandScanEnd; brandOffset += 4) {
-            if (brandOffset === minorVersionOffset) continue; // minor_version，不是品牌字段
-            var brand = bytesToAscii(bytes, brandOffset, 4);
-            if (brand === "avif") hasAvifBrand = true;
-            if (brand === "avis" || brand === "avio") hasAvifSequenceBrand = true;
-            if (brand === "heic" || brand === "heix" || brand === "heim" || brand === "heis") hasHeicBrand = true;
-            if (brand === "mif1") hasHeifBrand = true;
-            if (brand === "hevc" || brand === "hevx" || brand === "hevm" || brand === "hevs") {
-                hasHeicSequenceBrand = true;
-            }
-            if (brand === "msf1") hasHeifSequenceBrand = true;
-        }
-        // Mistral 的单图 OCR 未明确支持图像序列；序列文件也可能同时声明 still-image 品牌，故优先拒绝。
-        if (hasAvifSequenceBrand || hasHeicSequenceBrand || hasHeifSequenceBrand) return null;
-        if (hasAvifBrand) return "image/avif";
-        if (hasHeicBrand) return "image/heic";
-        if (hasHeifBrand) return "image/heif";
+        return detectIsoBmffMimeType(base64, bytes);
     }
 
     return null;

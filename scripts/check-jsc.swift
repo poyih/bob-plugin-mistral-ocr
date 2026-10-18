@@ -15,13 +15,33 @@ let samples = [
     ("**a *b* c**", "a b c"),
     ("&lt;br/&gt; &#20013;&#x6587;", "<br/> 中文"),
     ("| A | B |\n| :--: | :-: |\n| 1 | 2 |", "A B\n1 2"),
+    ("\\~~literal~~", "~~literal~~"),
+    ("~~literal\\~~", "~~literal~~"),
+    ("~~removed~~", "removed"),
 ]
 for (input, expected) in samples {
     let output = context.objectForKeyedSubscript("stripMarkdown")?.call(withArguments: [input])?.toString()
     guard output == expected else { fatalError("JavaScriptCore Markdown regression failed") }
 }
+let paddedTable = "a|" + String(repeating: " ", count: 40_000) + "x\n---|---"
+let startedAt = Date()
+let tableOutput = context.objectForKeyedSubscript("stripMarkdown")?.call(withArguments: [paddedTable])?.toString()
+let tableDuration = Date().timeIntervalSince(startedAt)
+guard tableOutput == "a x" else { fatalError("JavaScriptCore padded-table regression failed") }
+guard tableDuration < 2 else { fatalError("JavaScriptCore padded-table processing exceeded 2 seconds") }
 let image = try Data(contentsOf: root.appendingPathComponent("tests/fixtures/ocr-sample.png"))
 let mime = context.objectForKeyedSubscript("detectMimeType")?.call(withArguments: [image.base64EncodedString()])?.toString()
 guard mime == "image/png" else { fatalError("JavaScriptCore MIME regression failed") }
+// The final compatible brand starts beyond the old 64-byte scan limit.
+var longFtyp = Data([0, 0, 0, 68])
+longFtyp.append(Data("ftypmif1".utf8))
+longFtyp.append(Data(repeating: 0, count: 4))
+longFtyp.append(Data(String(repeating: "zzzz", count: 12).utf8))
+longFtyp.append(Data("avif".utf8))
+let avifMime = context.objectForKeyedSubscript("detectMimeType")?.call(withArguments: [longFtyp.base64EncodedString()])?.toString()
+guard avifMime == "image/avif" else { fatalError("JavaScriptCore long-ftyp AVIF regression failed") }
+longFtyp.replaceSubrange(64..<68, with: Data("avis".utf8))
+let sequenceMime = context.objectForKeyedSubscript("detectMimeType")?.call(withArguments: [longFtyp.base64EncodedString()])
+guard sequenceMime?.isNull == true else { fatalError("JavaScriptCore long-ftyp sequence regression failed") }
 if let failure { fatalError("JavaScriptCore regression failed: \(failure)") }
-print("JavaScriptCore smoke checks passed (6 text regressions and a complete PNG).")
+print("JavaScriptCore checks passed (\(samples.count) text regressions, a complete PNG, and 2 long-ftyp regressions; padded table: \(Int(tableDuration * 1000)) ms).")
