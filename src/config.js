@@ -55,5 +55,3 @@ function supportLanguages() {
 function pluginTimeoutInterval() {
     return 90;
 }
-
-// 从 base64 开头解码少量字节。避免完整解码大图，只用于检查魔术字节。

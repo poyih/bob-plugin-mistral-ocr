@@ -1,9 +1,9 @@
 {
     "identifier": "bob-plugin-mistral-ocr",
-    "version": "1.5.4",
-    "desc": "修复表格和链接含大量内部空白时的处理卡顿；保留转义删除线定界符，避免纯文本输出丢失波浪号；完整流式检查 AVIF/HEIF 文件头中的兼容品牌，正确拒绝晚出现的图像序列标记；开发与 CI 升级至 Node.js 24，并新增 macOS JavaScriptCore 回归检查",
-    "sha256": "fd1a18f6f5a6286bc9d45558cd5504a52c60170e0bc349cb7378b1809bdc8868",
-    "url": "https://github.com/poyih/bob-plugin-mistral-ocr/releases/download/v1.5.4/Mistral-OCR.bobplugin",
+    "version": "1.5.5",
+    "desc": "纯文本模式保留有序列表、编号标题和行首日期中的序号（如“1. ”“2026. 10. 19”），不再误删图片中的可见编号；加粗文字紧邻全角标点或引号时（如加粗的“注意：”后直接接正文）也能去除加粗标记，单个星号仍保守保留；表格单元格内的换行改为空格，不再拆散表头或数据行、残留竖线；新增对应回归测试与 JavaScriptCore 检查",
+    "sha256": "bcf38b1b875e99c0f5ac4d881349f3269163169bcb51d39f7269796deb0cc29d",
+    "url": "https://github.com/poyih/bob-plugin-mistral-ocr/releases/download/v1.5.5/Mistral-OCR.bobplugin",
     "minBobVersion": "1.8.0",
-    "timestamp": 1792321624744
+    "timestamp": 1792395290468
 }

@@ -1,3 +1,4 @@
+// 从 base64 开头解码少量字节。避免完整解码大图，只用于检查魔术字节。
 function decodeBase64Prefix(base64, maxBytes) {
     if (typeof base64 !== "string") return [];
 

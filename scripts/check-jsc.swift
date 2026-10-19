@@ -18,6 +18,9 @@ let samples = [
     ("\\~~literal~~", "~~literal~~"),
     ("~~literal\\~~", "~~literal~~"),
     ("~~removed~~", "removed"),
+    ("1. 第一题\n2. 第二题", "1. 第一题\n2. 第二题"),
+    ("**注意：**请按时提交", "注意：请按时提交"),
+    ("| 金额<br>（元） | 数量 |\n| --- | --- |\n| 1 | 2 |", "金额 （元） 数量\n1 2"),
 ]
 for (input, expected) in samples {
     let output = context.objectForKeyedSubscript("stripMarkdown")?.call(withArguments: [input])?.toString()

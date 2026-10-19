@@ -78,3 +78,49 @@ test("strikethrough handles many escaped and unmatched candidates in linear time
   assert.equal(context.stripMarkdown(input), expected);
   assert.ok(performance.now() - startedAt < 1_000, "escaped candidates must not rescan the remaining text");
 });
+
+test("ordered-list numbers are visible text and stay in plain text", () => {
+  for (const [input, expected] of [
+    ["1. 下列说法正确的是\n2. 第二题", "1. 下列说法正确的是\n2. 第二题"],
+    ["## 2. Methods\n\n2.1 Data", "2. Methods\n\n2.1 Data"],
+    ["3) 选项 A", "3) 选项 A"],
+    ["2026. 10. 19 会议纪要", "2026. 10. 19 会议纪要"],
+    ["**1.** 总则", "1. 总则"],
+    ["  10. indented", "10. indented"],
+    ["- 无序项\n* 另一项", "无序项\n另一项"],
+  ]) assert.equal(context.stripMarkdown(input), expected, input);
+});
+
+test("double asterisks next to CJK punctuation are removed while single asterisks stay conservative", () => {
+  for (const [input, expected] of [
+    ["**注意：**请按时提交", "注意：请按时提交"],
+    ["请看**“重点”**部分", "请看“重点”部分"],
+    ["**（一）**基本情况", "（一）基本情况"],
+    ["**注意…**请", "注意…请"],
+    ["**한국어：**설명", "한국어：설명"],
+    ["\u{20bb7}**“野”**家", "\u{20bb7}“野”家"],
+    ["**Note:** be careful", "Note: be careful"],
+    ["a**“b”**c", "a**“b”**c"],
+    ["姓名*：张三 电话*：123", "姓名*：张三 电话*：123"],
+    ["价格*：100元，数量*：5", "价格*：100元，数量*：5"],
+  ]) assert.equal(context.stripMarkdown(input), expected, input);
+});
+
+test("line breaks inside table cells keep each row on one line", () => {
+  for (const [input, expected] of [
+    ["| Name<br>(EN) | Amount |\n| --- | --- |\n| ALICE | 100 |", "Name (EN) Amount\nALICE 100"],
+    ["| Name | Amount |\n| --- | --- |\n| A<br/>B | 100 |", "Name Amount\nA B 100"],
+    ["| 金额<br />（元） | 数量 |\n| --- | --- |\n| 1 | 2 |", "金额 （元） 数量\n1 2"],
+    ["<table><tr><th>Name<br>(EN)</th><th>B</th></tr><tr><td>1<br>2</td><td>3</td></tr></table>", "Name (EN) B\n\n1 2 3"],
+    ["A<br>B\n| x | y |", "A\nB\n| x | y |"],
+    ["`a<br>b` | c |\n| - | - |", "a<br>b c"],
+  ]) assert.equal(context.stripMarkdown(input), expected, input);
+});
+
+test("table cell line breaks stay linear across many rows", () => {
+  const input = "| a<br>b | c |\n| - | - |\n" + "| x<br>y | z |\n".repeat(20_000);
+  const expected = "a b c\n" + Array(20_000).fill("x y z").join("\n");
+  const startedAt = performance.now();
+  assert.equal(context.stripMarkdown(input), expected);
+  assert.ok(performance.now() - startedAt < 1_000, "cell line breaks must not rescan the table for each row");
+});

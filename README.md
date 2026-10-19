@@ -91,7 +91,7 @@ npm run ci
 
 CI 在 Ubuntu 上执行完整检查，并在 macOS 上通过 `npm run test:jsc` 加载完整插件，验证系统 JavaScriptCore 中的文本转换、长空白表格性能和图片格式检测。macOS 本地也可运行该命令；需要 Xcode Command Line Tools 中的 Swift。
 
-测试覆盖转义（包括删除线定界符）、代码、中文强调、实体、独立表格、宽表格和长空白性能、长 AVIF/HEIF 文件头、所选模型、上传限制、完整 PNG/JPEG 图片、下载超时和发布中断重试。`tests/fixtures/ocr-sample.png` 与 `.jpg` 是只含示例文字和表格的完整测试图，不含个人资料。
+测试覆盖转义（包括删除线定界符）、代码、中文强调（含紧邻全角标点的加粗）、有序列表序号、实体、独立表格、单元格内换行、宽表格和长空白性能、长 AVIF/HEIF 文件头、所选模型、上传限制、完整 PNG/JPEG 图片、下载超时和发布中断重试。`tests/fixtures/ocr-sample.png` 与 `.jpg` 是只含示例文字和表格的完整测试图，不含个人资料。
 
 真实 API 测试需自行提供环境变量，执行 `npm run test:live`；它只上传上述 PNG，一次运行发起一次 OCR 请求，可能产生费用。不要将真实 API Key 写入脚本、测试或仓库。该脚本不输出密钥、图片数据或原始响应。
 

@@ -527,11 +527,11 @@ function getKnownHtmlReplacement(tag) {
     return null;
 }
 
-function replaceKnownHtmlTags(text) {
+function replaceHtmlTags(text, getReplacement) {
     var output = [];
     var outputCursor = 0;
     scanHtmlTags(text, function (tag) {
-        var replacement = getKnownHtmlReplacement(tag);
+        var replacement = getReplacement(tag);
         if (replacement === null) return;
         output.push(text.slice(outputCursor, tag.start));
         output.push(replacement);
@@ -539,6 +539,17 @@ function replaceKnownHtmlTags(text) {
     });
     output.push(text.slice(outputCursor));
     return output.join("");
+}
+
+function replaceKnownHtmlTags(text) {
+    var inCell = false;
+    return replaceHtmlTags(text, function (tag) {
+        if (HTML_CELL_TAGS[tag.name] === true) inCell = !tag.isClosing;
+        else if (tag.name === "tr" || tag.name === "table") inCell = false;
+        var replacement = getKnownHtmlReplacement(tag);
+        // 与 Markdown 表格一致：HTML 单元格里的 <br> 换成空格，保持整行在同一行。
+        return inCell && replacement === "\n" && tag.name === "br" ? " " : replacement;
+    });
 }
 
 function getLinkDestination(target) {
@@ -761,29 +772,73 @@ function isMarkdownTableSeparator(line) {
     return false;
 }
 
+function hasUnescapedPipe(line) {
+    for (var pipeIndex = 0; pipeIndex < line.length; pipeIndex++) {
+        if (line.charAt(pipeIndex) === "|" && !isEscaped(line, pipeIndex)) return true;
+    }
+    return false;
+}
+
+function markdownTableCellCount(line) {
+    line = trimSpacesAndTabs(line);
+    var start = line.charAt(0) === "|" ? 1 : 0;
+    var end = line.length;
+    if (end > start && line.charAt(end - 1) === "|" && !isEscaped(line, end - 1)) end--;
+    var count = 1;
+    for (var index = start; index < end; index++) {
+        if (line.charAt(index) === "|" && !isEscaped(line, index)) count++;
+    }
+    return count;
+}
+
+// 标记表头、数据行和分隔行的行号。
+function findMarkdownTableRows(lines) {
+    var tableRows = [];
+    var separatorRows = [];
+    var insideTableBlock = false;
+    for (var i = 0; i < lines.length; i++) {
+        if (isMarkdownTableSeparator(lines[i])) {
+            // 分隔行只有紧跟含未转义管道的表头时才有表格语义；孤立的 `---|---`
+            // 及其后普通管道文本都必须原样保留。
+            if (i > 0 && hasUnescapedPipe(lines[i - 1]) &&
+                markdownTableCellCount(lines[i - 1]) === markdownTableCellCount(lines[i])) {
+                separatorRows[i] = true;
+                tableRows[i - 1] = true;
+                insideTableBlock = true;
+            } else {
+                insideTableBlock = false;
+            }
+            continue;
+        }
+
+        if (!insideTableBlock) continue;
+        if (lines[i].replace(/[ \t]/g, "") && hasUnescapedPipe(lines[i])) {
+            tableRows[i] = true;
+        } else {
+            insideTableBlock = false;
+        }
+    }
+    return { tableRows: tableRows, separatorRows: separatorRows };
+}
+
+// Markdown 表格行不能跨行，单元格里的 <br> 只是格内换行。先换成空格，
+// 否则表头会被拆成两行，表格识别失败后残留竖线。
+function replaceTableCellLineBreaks(text) {
+    if (!/<br/i.test(text)) return text;
+    var lines = text.split("\n");
+    var tableRows = findMarkdownTableRows(lines).tableRows;
+    for (var i = 0; i < lines.length; i++) {
+        if (!tableRows[i]) continue;
+        lines[i] = replaceHtmlTags(lines[i], function (tag) {
+            return tag.name === "br" && !tag.isClosing ? " " : null;
+        });
+    }
+    return lines.join("\n");
+}
+
 function simplifyMarkdownTables(text) {
     var lines = text.split("\n");
-    var tableRows = [];
-    var removedRows = [];
-
-    function hasUnescapedPipe(line) {
-        for (var pipeIndex = 0; pipeIndex < line.length; pipeIndex++) {
-            if (line.charAt(pipeIndex) === "|" && !isEscaped(line, pipeIndex)) return true;
-        }
-        return false;
-    }
-
-    function cellCount(line) {
-        line = trimSpacesAndTabs(line);
-        var start = line.charAt(0) === "|" ? 1 : 0;
-        var end = line.length;
-        if (end > start && line.charAt(end - 1) === "|" && !isEscaped(line, end - 1)) end--;
-        var count = 1;
-        for (var index = start; index < end; index++) {
-            if (line.charAt(index) === "|" && !isEscaped(line, index)) count++;
-        }
-        return count;
-    }
+    var rows = findMarkdownTableRows(lines);
 
     function simplifyTableRow(line) {
         line = trimSpacesAndTabs(line);
@@ -802,33 +857,10 @@ function simplifyMarkdownTables(text) {
         return cells.join("\t");
     }
 
-    var insideTableBlock = false;
-    for (var i = 0; i < lines.length; i++) {
-        if (isMarkdownTableSeparator(lines[i])) {
-            // 分隔行只有紧跟含未转义管道的表头时才有表格语义；孤立的 `---|---`
-            // 及其后普通管道文本都必须原样保留。
-            if (i > 0 && hasUnescapedPipe(lines[i - 1]) && cellCount(lines[i - 1]) === cellCount(lines[i])) {
-                removedRows[i] = true;
-                tableRows[i - 1] = true;
-                insideTableBlock = true;
-            } else {
-                insideTableBlock = false;
-            }
-            continue;
-        }
-
-        if (!insideTableBlock) continue;
-        if (lines[i].replace(/[ \t]/g, "") && hasUnescapedPipe(lines[i])) {
-            tableRows[i] = true;
-        } else {
-            insideTableBlock = false;
-        }
-    }
-
     var output = [];
     for (var row = 0; row < lines.length; row++) {
-        if (removedRows[row]) continue;
-        if (tableRows[row]) {
+        if (rows.separatorRows[row]) continue;
+        if (rows.tableRows[row]) {
             var trimmed = trimSpacesAndTabs(lines[row]);
             lines[row] = simplifyTableRow(trimmed);
         }
@@ -840,6 +872,23 @@ function simplifyMarkdownTables(text) {
 
 function isMarkdownPunctuation(character) {
     return !!character && /[!"#$%&'()*+,\-./:;<=>?@[\]\\^_`{|}~\u2000-\u206f\u3001-\u303f\uff01-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65]/.test(character);
+}
+
+// CommonMark CJK-friendly 修订中的 CJK 字符：东亚宽度为 W/F/H 的字符及谚文，不含 emoji。
+function isCjkCharacterAt(text, index) {
+    var code = text.charCodeAt(index);
+    if (code >= 0xdc00 && code <= 0xdfff) {
+        // 扩展 B 及以后的汉字（U+20000–U+3FFFF）是代理对，按其高位代理判断。
+        var high = text.charCodeAt(index - 1);
+        return high >= 0xd840 && high <= 0xd8ff;
+    }
+    return (code >= 0x1100 && code <= 0x11ff) || (code >= 0x2e80 && code <= 0x2fff) ||
+        (code >= 0x3001 && code <= 0x303e) || (code >= 0x3041 && code <= 0x33ff) ||
+        (code >= 0x3400 && code <= 0x4dbf) || (code >= 0x4e00 && code <= 0xa4cf) ||
+        (code >= 0xa960 && code <= 0xa97f) || (code >= 0xac00 && code <= 0xd7ff) ||
+        (code >= 0xd840 && code <= 0xd8ff) || (code >= 0xf900 && code <= 0xfaff) ||
+        (code >= 0xfe10 && code <= 0xfe19) || (code >= 0xfe30 && code <= 0xfe6f) ||
+        (code >= 0xff01 && code <= 0xffdc) || (code >= 0xffe0 && code <= 0xffee);
 }
 
 // 单遍配对 asterisk run，支持中文及嵌套强调；保留 ASCII 标识符之间的乘号。
@@ -863,10 +912,16 @@ function stripEmphasis(text) {
         var after = text.charAt(cursor + length);
         var beforeWhitespace = !before || /\s/.test(before);
         var afterWhitespace = !after || /\s/.test(after);
-        var beforePunctuation = isMarkdownPunctuation(before);
-        var afterPunctuation = isMarkdownPunctuation(after);
-        var canOpen = !afterWhitespace && (!afterPunctuation || beforeWhitespace || beforePunctuation);
-        var canClose = !beforeWhitespace && (!beforePunctuation || afterWhitespace || afterPunctuation);
+        // `**` 及更长的 run 按 CJK-friendly 规则判断：全角标点视同文字，紧邻 CJK 字符的
+        // 西文标点也不阻断，因此“**注意：**请”可以闭合。单个 `*` 常是脚注或必填标记，
+        // 仍按标准规则保守处理。
+        var cjkFriendly = remaining >= 2;
+        var beforeCjk = cjkFriendly && isCjkCharacterAt(text, start - 1);
+        var afterCjk = cjkFriendly && isCjkCharacterAt(text, cursor + length);
+        var beforePunctuation = !beforeCjk && isMarkdownPunctuation(before);
+        var afterPunctuation = !afterCjk && isMarkdownPunctuation(after);
+        var canOpen = !afterWhitespace && (!afterPunctuation || beforeWhitespace || beforePunctuation || beforeCjk);
+        var canClose = !beforeWhitespace && (!beforePunctuation || afterWhitespace || afterPunctuation || afterCjk);
         if (remaining === 1 && /[A-Za-z0-9_]/.test(before) && /[A-Za-z0-9_]/.test(after)) {
             canOpen = false;
             canClose = false;
@@ -1000,16 +1055,16 @@ function stripMarkdown(text) {
     text = protectInlineCode(text, protect);
     text = protectMath(text, protect);
     text = replaceMarkdownLinks(text);
-    text = replaceKnownHtmlTags(text);
+    text = replaceKnownHtmlTags(replaceTableCellLineBreaks(text));
 
     // 下划线也常见于代码标识符（如 __init__、x_i）；宁可保留格式符，也不删除 OCR 原文字符。
     text = stripStrikethrough(stripEmphasis(text))
         // 标题与强调。边界通过捕获组判断，不使用旧版 JavaScriptCore 不支持的 lookbehind。
         .replace(/^#{1,6}[ \t]+/gm, "")
-        // 水平线、列表和引用。
+        // 水平线、无序列表和引用。有序列表的序号是图片中的可见文字（如题号、章节号、
+        // 行首的“2026. 10. 19”），不属于格式符，予以保留。
         .replace(/^[ \t]*([-*_])(?:[ \t]*\1){2,}[ \t]*$/gm, "")
         .replace(/^[ \t]*[-*+][ \t]+/gm, "")
-        .replace(/^[ \t]*\d+[.)][ \t]+/gm, "")
         .replace(/^[ \t]*>[ \t]?/gm, "");
 
     text = decodeHtmlEntities(simplifyMarkdownTables(text))
